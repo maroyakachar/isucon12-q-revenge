@@ -892,51 +892,29 @@ def competition_ranking_handler(competition_id):
 
     try:
         player_score_rows = tenant_db.execute(
-            "SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
+            "SELECT RANK () OVER (ORDER BY player_score.score DESC, s.row_num ASC) AS rank, s.player_id, player_score.score, player.display_name \
+            FROM (SELECT player_id, MAX(row_num) AS row_num FROM player_score GROUP BY player_id) AS s \
+            INNER JOIN player_score \
+            INNER JOIN player \
+            ON s.row_num = player_score.row_num AND s.player_id = player.id \
+            WHERE player_score.tenant_id = ? AND player_score.competition_id = ? \
+            ORDER BY rank",
             tenant_row.id,
             competition_id,
         ).fetchall()
 
-        ranks = []
-        scored_player_set = {}
-        for player_score_row in player_score_rows:
-            # player_scoreが同一player_id内ではrow_numの降順でソートされているので
-            # 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
-            if scored_player_set.get(player_score_row.player_id) is not None:
-                continue
-
-            scored_player_set[player_score_row.player_id] = {}
-            player = retrieve_player(tenant_db, player_score_row.player_id)
-            if not player:
-                raise RuntimeError("error retrievePlayer")
-            ranks.append(
-                CompetitionRank(
-                    rank=0,
-                    score=player_score_row.score,
-                    player_id=player.id,
-                    player_display_name=player.display_name,
-                    row_num=player_score_row.row_num,
-                )
-            )
-
-        ranks.sort(key=lambda rank: rank.row_num)
-        ranks.sort(key=lambda rank: rank.score, reverse=True)
-
         paged_ranks = []
-        for i, rank in enumerate(ranks):
-            if i < rank_after:
-                continue
+
+        for player_score_row in player_score_rows[rank_after:rank_after+100]:
             paged_ranks.append(
                 CompetitionRank(
-                    rank=i + 1,
-                    score=rank.score,
-                    player_id=rank.player_id,
-                    player_display_name=rank.player_display_name,
+                    rank=player_score_row.rank,
+                    score=player_score_row.score,
+                    player_id=player_score_row.player_id,
+                    player_display_name=player_score_row.display_name,
                     row_num=0,
                 )
             )
-            if len(paged_ranks) >= 100:
-                break
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
