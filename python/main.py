@@ -68,6 +68,7 @@ def create_tenant_db(id: int):
 
 
 def dispense_id() -> str:
+    # TODO: IDをuuid貼り付ける
     """システム全体で一意なIDを生成する"""
     id = 0
     last_err = None
@@ -372,6 +373,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
         billing_map[str(vh.player_id)] = "visitor"
 
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
+    # TODO: ロック不要
     lock_file = flock_by_tenant_id(tenant_id)
     if not lock_file:
         raise RuntimeError("error flock_by_tenant_id")
@@ -679,6 +681,7 @@ def competition_score_handler(competition_id: str):
         abort(400, "invalid CSV headers")
 
     # DELETEしたタイミングで参照が来ると空っぽのランキングになるのでロックする
+    # TODO: （下記実装のままなら）これはロックした方が良い。複数のトランザクションにまたがるため
     lock_file = flock_by_tenant_id(viewer.tenant_id)
     if not lock_file:
         raise RuntimeError("error flock_by_tenant_id")
@@ -806,9 +809,7 @@ def player_handler(player_id: str):
     competition_rows = tenant_db.execute("SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC", viewer.tenant_id).fetchall()
 
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-    lock_file = flock_by_tenant_id(viewer.tenant_id)
-    if not lock_file:
-        raise RuntimeError("error flock_by_tenant_id")
+    # TODO: ロック不要
 
     try:
         player_score_rows = []
@@ -833,9 +834,6 @@ def player_handler(player_id: str):
             player_score_details.append(
                 PlayerScoreDetail(competition_title=competition.title, score=player_score_row.score)
             )
-    finally:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        lock_file.close()
 
     return jsonify(
         SuccessResult(
@@ -898,6 +896,7 @@ def competition_ranking_handler(competition_id):
         rank_after = int(rank_after_str)
 
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
+    # TODO: ロック不要
     lock_file = flock_by_tenant_id(viewer.tenant_id)
     if not lock_file:
         raise RuntimeError("error flock_by_tenant_id")
