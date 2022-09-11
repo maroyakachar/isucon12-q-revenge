@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.exceptions import HTTPException
 
 from sqltrace import initialize_sql_logger
+import uuid
 
 INITIALIZE_SCRIPT = "../sql/init.sh"
 COOKIE_NAME = "isuports_session"
@@ -69,20 +70,7 @@ def create_tenant_db(id: int):
 
 def dispense_id() -> str:
     """システム全体で一意なIDを生成する"""
-    id = 0
-    last_err = None
-    for i in range(100):
-        try:
-            res = admin_db.execute("REPLACE INTO id_generator (stub) VALUES (%s)", "a")
-            id = res.lastrowid
-            if id != 0:
-                return hex(id)[2:]
-        except OperationalError as e:  # deadlock
-            last_err = e
-            continue
-
-    raise RuntimeError from last_err
-
+    return uuid.uuid4().hex
 
 @app.after_request
 def add_header(response):
