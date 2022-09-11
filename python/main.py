@@ -383,6 +383,8 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
                     player_count += 1
                 if category == "visitor":
                     visitor_count += 1
+    finally:
+        pass
 
     return BillingReport(
         competition_id=competition.id,
@@ -816,6 +818,8 @@ def player_handler(player_id: str):
             player_score_details.append(
                 PlayerScoreDetail(competition_title=competition.title, score=player_score_row.score)
             )
+    finally:
+        pass
 
     return jsonify(
         SuccessResult(
@@ -927,6 +931,8 @@ def competition_ranking_handler(competition_id):
             )
             if len(paged_ranks) >= 100:
                 break
+    finally:
+        pass
 
     return jsonify(
         SuccessResult(
