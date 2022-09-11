@@ -673,7 +673,7 @@ def competition_score_handler(competition_id: str):
 
     try:
         row_num = 0
-        player_score_rows = []
+        player_score_rows = {}
         for row in csv_reader:
             row_num += 1
             if len(row) != 2:
@@ -687,8 +687,7 @@ def competition_score_handler(competition_id: str):
             score = int(score_str, 10)
             id = dispense_id()
             now = int(datetime.now().timestamp())
-            player_score_rows.append(
-                PlayerScoreRow(
+            player_score_rows[player_id] = PlayerScoreRow(
                     id=id,
                     tenant_id=viewer.tenant_id,
                     player_id=player_id,
@@ -698,7 +697,6 @@ def competition_score_handler(competition_id: str):
                     created_at=now,
                     updated_at=now,
                 )
-            )
 
         tenant_db.execute(
             "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
@@ -706,7 +704,7 @@ def competition_score_handler(competition_id: str):
             competition_id,
         )
 
-        for player_score_row in player_score_rows:
+        for player_score_row in player_score_rows.values():
             tenant_db.execute(
                 "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 player_score_row.id,
@@ -722,7 +720,7 @@ def competition_score_handler(competition_id: str):
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
 
-    return jsonify(SuccessResult(status=True, data={"rows": len(player_score_rows)}))
+    return jsonify(SuccessResult(status=True, data={"rows": row_num}))
 
 
 @app.route("/api/organizer/billing", methods=["GET"])
