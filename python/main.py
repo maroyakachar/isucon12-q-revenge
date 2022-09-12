@@ -886,17 +886,19 @@ def competition_ranking_handler(competition_id):
 
     try:
         player_score_rows = tenant_db.execute(
-            "SELECT rank, player_score.player_id, player_score.score, player.display_name \
+            "SELECT player_score.rank, player_score.player_id, player_score.score, player.display_name \
             FROM player_score INNER JOIN player \
             ON player_score.player_id = player.id \
-            WHERE player_score.competition_id = ? \
-            ORDER BY rank",
+            WHERE player_score.competition_id = ? AND player_score.rank > ? \
+            ORDER BY rank \
+            LIMIT 100",
             competition_id,
+            rank_after,
         ).fetchall()
 
         paged_ranks = []
 
-        for player_score_row in player_score_rows[rank_after:rank_after+100]:
+        for player_score_row in player_score_rows:
             paged_ranks.append(
                 CompetitionRank(
                     rank=player_score_row.rank,
