@@ -797,17 +797,10 @@ def player_handler(player_id: str):
     try:
         player_score_rows = tenant_db.execute(
             "SELECT competition.title AS competition_title, player_score.score \
-            FROM (SELECT competition_id, player_id, MAX(row_num) AS row_num \
-                  FROM player_score \
-                  WHERE player_id = ? \
-                  GROUP BY competition_id) AS s \
-            INNER JOIN player_score \
-            INNER JOIN competition \
-            ON  s.competition_id = player_score.competition_id \
-            AND s.player_id = player_score.player_id \
-            AND s.row_num = player_score.row_num \
-            AND s.competition_id = competition.id \
-            ORDER BY competition.created_at ASC, s.row_num DESC",
+            FROM player_score INNER JOIN competition \
+            ON player_score.competition_id = competition.id \
+            WHERE player_score.player_id = ? \
+            ORDER BY competition.created_at ASC, player_score.row_num DESC",
             player.id
         )
 
@@ -891,17 +884,10 @@ def competition_ranking_handler(competition_id):
 
     try:
         player_score_rows = tenant_db.execute(
-            "SELECT RANK () OVER (ORDER BY player_score.score DESC, s.row_num ASC) AS rank, s.player_id, player_score.score, player.display_name \
-            FROM (SELECT competition_id, player_id, MAX(row_num) AS row_num \
-                  FROM player_score \
-                  WHERE competition_id = ? \
-                  GROUP BY player_id) AS s \
-            INNER JOIN player_score \
-            INNER JOIN player \
-            ON  s.competition_id = player_score.competition_id \
-            AND s.player_id = player_score.player_id \
-            AND s.row_num = player_score.row_num \
-            AND s.player_id = player.id \
+            "SELECT RANK () OVER (ORDER BY player_score.score DESC, player_score.row_num ASC) AS rank, player_score.player_id, player_score.score, player.display_name \
+            FROM player_score INNER JOIN player \
+            ON  player_score.player_id = player.id \
+            WHERE player_score.competition_id = ? \
             ORDER BY rank",
             competition_id,
         ).fetchall()
