@@ -891,13 +891,17 @@ def competition_ranking_handler(competition_id):
     try:
         player_score_rows = tenant_db.execute(
             "SELECT RANK () OVER (ORDER BY player_score.score DESC, s.row_num ASC) AS rank, s.player_id, player_score.score, player.display_name \
-            FROM (SELECT player_id, MAX(row_num) AS row_num FROM player_score GROUP BY player_id) AS s \
+            FROM (SELECT competition_id, player_id, MAX(row_num) AS row_num \
+                  FROM player_score \
+                  WHERE competition_id = ? \
+                  GROUP BY player_id) AS s \
             INNER JOIN player_score \
             INNER JOIN player \
-            ON s.row_num = player_score.row_num AND s.player_id = player.id \
-            WHERE player_score.tenant_id = ? AND player_score.competition_id = ? \
+            ON  s.competition_id = player_score.competition_id \
+            AND s.player_id = player_score.player_id \
+            AND s.row_num = player_score.row_num \
+            AND s.player_id = player.id \
             ORDER BY rank",
-            tenant_row.id,
             competition_id,
         ).fetchall()
 
