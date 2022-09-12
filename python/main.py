@@ -11,9 +11,11 @@ from typing import Any, Optional
 
 import jwt
 from flask import Flask, abort, jsonify, request
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Column, BigInteger, String
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
 
 from sqltrace import initialize_sql_logger
@@ -32,6 +34,7 @@ ROLE_NONE = "none"
 TENANT_NAME_REGEXP = re.compile(r"^[a-z][a-z0-9-]{0,61}[a-z0-9]$")
 
 admin_db: Engine = None
+Base = declarative_base()
 
 app = Flask(__name__)
 
@@ -242,16 +245,17 @@ def retrieve_competition(tenant_db: Engine, id: str) -> Optional[CompetitionRow]
 
 
 @dataclass
-class PlayerScoreRow:
-    tenant_id: int
-    id: str
-    player_id: str
-    competition_id: str
-    score: int
-    row_num: int
-    created_at: int
-    updated_at: int
-
+class PlayerScoreRow(Base):
+    __tablename__ = "player_score"
+    tenant_id = Column(BigInteger, nullable=False)
+    id = Column(String(255), nullable=False, primary_key=True)
+    player_id = Column(String(255), nullable=False)
+    competition_id = Column(String(255), nullable=False)
+    score = Column(BigInteger, nullable=False)
+    row_num = Column(BigInteger, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+    updated_at = Column(BigInteger, nullable=False)
+    rank = Column(BigInteger, nullable=False, default=0)
 
 def lock_file_path(id: int) -> str:
     """排他ロックのためのファイル名を生成する"""
@@ -701,25 +705,19 @@ def competition_score_handler(competition_id: str):
         # Sort player_score_rows by score (in desc order) and row_num (in asc order)
         player_score_rows = sorted(player_score_rows.values(), key=lambda r: (-r.score, r.row_num))
 
+        # Add rank to each row
+        for i, player_score_row in enumerate(player_score_rows):
+            player_score_row.rank = i + 1
+
         tenant_db.execute(
             "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
             viewer.tenant_id,
             competition_id,
         )
 
-        for i, player_score_row in enumerate(player_score_rows):
-            tenant_db.execute(
-                "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                player_score_row.id,
-                player_score_row.tenant_id,
-                player_score_row.player_id,
-                player_score_row.competition_id,
-                player_score_row.score,
-                player_score_row.row_num,
-                player_score_row.created_at,
-                player_score_row.updated_at,
-                i + 1,
-            )
+        session = Session(bind=tenant_db)
+        session.add_all(player_score_rows)
+        session.commit()
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
