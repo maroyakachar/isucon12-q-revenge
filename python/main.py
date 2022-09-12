@@ -789,35 +789,36 @@ def player_handler(player_id: str):
     if not player:
         abort(404, "player not found")
 
-    competition_rows = tenant_db.execute("SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC", viewer.tenant_id).fetchall()
-
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
     lock_file = flock_by_tenant_id(viewer.tenant_id)
     if not lock_file:
         raise RuntimeError("error flock_by_tenant_id")
 
     try:
-        player_score_rows = []
-        for competition_row in competition_rows:
-            # 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-            player_score_row = tenant_db.execute(
-                "SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
-                viewer.tenant_id,
-                competition_row.id,
-                player.id,
-            ).fetchone()
-            if not player_score_row:
-                # 行がない = スコアが記録されてない
-                continue
-            player_score_rows.append(PlayerScoreRow(**player_score_row))
+        player_score_rows = tenant_db.execute(
+            "SELECT competition.title AS competition_title, player_score.score \
+            FROM (SELECT competition_id, player_id, MAX(row_num) AS row_num \
+                  FROM player_score \
+                  WHERE player_id = ? \
+                  GROUP BY competition_id) AS s \
+            INNER JOIN player_score \
+            INNER JOIN competition \
+            ON  s.competition_id = player_score.competition_id \
+            AND s.player_id = player_score.player_id \
+            AND s.row_num = player_score.row_num \
+            AND s.competition_id = competition.id \
+            ORDER BY competition.created_at ASC, s.row_num DESC",
+            player.id
+        )
 
         player_score_details = []
+
         for player_score_row in player_score_rows:
-            competition = retrieve_competition(tenant_db, player_score_row.competition_id)
-            if not competition:
-                continue
             player_score_details.append(
-                PlayerScoreDetail(competition_title=competition.title, score=player_score_row.score)
+                PlayerScoreDetail(
+                    competition_title=player_score_row.competition_title,
+                    score=player_score_row.score,
+                )
             )
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
