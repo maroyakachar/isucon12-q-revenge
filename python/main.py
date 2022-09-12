@@ -350,17 +350,16 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     if not competition:
         raise RuntimeError("error retrieveCompetition")
 
+    # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
     visit_history_summary_rows = admin_db.execute(
-        "SELECT player_id, MIN(created_at) AS min_created_at FROM visit_history WHERE tenant_id = %s AND competition_id = %s GROUP BY player_id",
+        "SELECT player_id FROM simple_visit_history WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s",
         tenant_id,
         competition.id,
+        competition.finished_at if bool(competition.finished_at) else datetime.max
     ).fetchall()
 
     billing_map = {}
     for vh in visit_history_summary_rows:
-        # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
-        if bool(competition.finished_at) and competition.finished_at < vh.min_created_at:
-            continue
         billing_map[str(vh.player_id)] = "visitor"
 
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
@@ -371,7 +370,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     try:
         # スコアを登録した参加者のIDを取得する
         scored_player_id_rows = tenant_db.execute(
-            "SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
+            "SELECT player_id FROM player_score WHERE tenant_id = ? AND competition_id = ?",
             tenant_id,
             competition.id,
         ).fetchall()
@@ -866,11 +865,10 @@ def competition_ranking_handler(competition_id):
         raise RuntimeError(f"Error Select tenant: id={viewer.tenant_id}")
 
     admin_db.execute(
-        "INSERT INTO visit_history (player_id, tenant_id, competition_id, created_at, updated_at) VALUES (%s, %s, %s, %s, %s)",
+        "INSERT INTO simple_visit_history (player_id, tenant_id, competition_id, created_at) VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE player_id = player_id",
         viewer.player_id,
         tenant_row.id,
         competition_id,
-        now,
         now,
     )
 
