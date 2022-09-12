@@ -698,15 +698,18 @@ def competition_score_handler(competition_id: str):
                     updated_at=now,
                 )
 
+        # Sort player_score_rows by score (in desc order) and row_num (in asc order)
+        player_score_rows = sorted(player_score_rows.values(), key=lambda r: (-r.score, r.row_num))
+
         tenant_db.execute(
             "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
             viewer.tenant_id,
             competition_id,
         )
 
-        for player_score_row in player_score_rows.values():
+        for i, player_score_row in enumerate(player_score_rows):
             tenant_db.execute(
-                "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 player_score_row.id,
                 player_score_row.tenant_id,
                 player_score_row.player_id,
@@ -715,6 +718,7 @@ def competition_score_handler(competition_id: str):
                 player_score_row.row_num,
                 player_score_row.created_at,
                 player_score_row.updated_at,
+                i + 1,
             )
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
@@ -884,9 +888,9 @@ def competition_ranking_handler(competition_id):
 
     try:
         player_score_rows = tenant_db.execute(
-            "SELECT RANK () OVER (ORDER BY player_score.score DESC, player_score.row_num ASC) AS rank, player_score.player_id, player_score.score, player.display_name \
+            "SELECT rank, player_score.player_id, player_score.score, player.display_name \
             FROM player_score INNER JOIN player \
-            ON  player_score.player_id = player.id \
+            ON player_score.player_id = player.id \
             WHERE player_score.competition_id = ? \
             ORDER BY rank",
             competition_id,
