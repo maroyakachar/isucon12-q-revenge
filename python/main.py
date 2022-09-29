@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
+import uwsgidecorators
 
 from sqltrace import initialize_sql_logger
 import uuid
@@ -1032,5 +1033,7 @@ def initialize_handler():
     return jsonify(SuccessResult(status=True, data={"lang": "python"}))
 
 
-if __name__ == "__main__":
-    run()
+@uwsgidecorators.postfork
+def init():
+    global admin_db
+    admin_db = connect_admin_db()
