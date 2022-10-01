@@ -3,3 +3,4 @@ Flask-SQLAlchemy
 mysql-connector-python
 pyjwt[crypto]
 uwsgi
+redis

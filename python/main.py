@@ -4,6 +4,7 @@ import fcntl
 import os
 import re
 import subprocess
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from io import TextIOWrapper
@@ -21,6 +22,8 @@ import uwsgidecorators
 
 from sqltrace import initialize_sql_logger
 import uuid
+from redis import Redis
+import json
 
 INITIALIZE_SCRIPT = "../sql/init.sh"
 COOKIE_NAME = "isuports_session"
@@ -35,6 +38,7 @@ ROLE_NONE = "none"
 TENANT_NAME_REGEXP = re.compile(r"^[a-z][a-z0-9-]{0,61}[a-z0-9]$")
 
 admin_db: Engine = None
+redis = None
 Base = declarative_base()
 
 app = Flask(__name__)
@@ -49,6 +53,13 @@ def connect_admin_db() -> Engine:
     database = os.getenv("ISUCON_DB_NAME", "isuports")
 
     return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{database}", pool_size=10)
+
+
+def connect_redis() -> Redis:
+    host = os.getenv("ISUCON_REDIS_HOST", "127.0.0.1")
+    port = os.getenv("ISUCON_REDIS_PORT", 6379)
+
+    return Redis(host=host, port=port)
 
 
 def tenant_db_path(id: int) -> str:
@@ -202,13 +213,26 @@ class PlayerRow:
     updated_at: int
 
 
+def json_of_player_row(row: PlayerRow) -> str:
+    return json.dumps(dataclasses.asdict(row))
+
+
+def player_row_of_json(str: str) -> PlayerRow:
+    return PlayerRow(**json.loads(str))
+
+
 def retrieve_player(tenant_db: Engine, id: str) -> Optional[PlayerRow]:
     """参加者を取得する"""
+    key = f"player:{id}"
+
+    if redis.exists(key):
+        return player_row_of_json(redis.get(key))
+
     row = tenant_db.execute("SELECT * FROM player WHERE id = ?", id).fetchone()
     if not row:
         return None
 
-    return PlayerRow(
+    player_row = PlayerRow(
         tenant_id=row.tenant_id,
         id=row.id,
         display_name=row.display_name,
@@ -216,6 +240,10 @@ def retrieve_player(tenant_db: Engine, id: str) -> Optional[PlayerRow]:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+    redis.set(key, json_of_player_row(player_row))
+
+    return player_row
 
 
 def authorize_player(tenant_db: Engine, id: str):
@@ -559,6 +587,10 @@ def player_disqualified_handler(player_id: str):
 
     tenant_db = connect_to_tenant_db(viewer.tenant_id)
 
+    player = retrieve_player(tenant_db, player_id)
+    if not player:
+        abort(404, "player not found")
+
     now = int(datetime.now().timestamp())
 
     tenant_db.execute(
@@ -568,9 +600,8 @@ def player_disqualified_handler(player_id: str):
         player_id,
     )
 
-    player = retrieve_player(tenant_db, player_id)
-    if not player:
-        abort(404, "player not found")
+    player = dataclasses.replace(player, is_disqualified=True, updated_at=now)
+    redis.set(f"player:{player_id}", json_of_player_row(player))
 
     return jsonify(
         SuccessResult(
@@ -1021,6 +1052,7 @@ def initialize_handler():
         subprocess.run([INITIALIZE_SCRIPT], shell=True)
     except subprocess.CalledProcessError as e:
         return f"error subprocess.run: {e.output} {e.stderr}"
+    redis.flushall()
 
     return jsonify(SuccessResult(status=True, data={"lang": "python"}))
 
@@ -1029,3 +1061,5 @@ def initialize_handler():
 def init():
     global admin_db
     admin_db = connect_admin_db()
+    global redis
+    redis = connect_redis()
