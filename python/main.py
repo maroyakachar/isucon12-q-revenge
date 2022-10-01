@@ -352,6 +352,18 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     if not competition:
         raise RuntimeError("error retrieveCompetition")
 
+    # if the competition is not over, return dummy values
+    if not bool(competition.finished_at):
+        return BillingReport(
+            competition_id=competition.id,
+            competition_title=competition.title,
+            player_count=0,
+            visitor_count=0,
+            billing_player_yen=0,
+            billing_visitor_yen=0,
+            billing_yen=0,
+        )
+
     # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
     visit_history_summary_rows = admin_db.execute(
         "SELECT player_id FROM simple_visit_history WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s",
