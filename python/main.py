@@ -11,10 +11,13 @@ from typing import Any, Optional
 
 import jwt
 from flask import Flask, abort, jsonify, request
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Column, BigInteger, String
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
+import uwsgidecorators
 
 from sqltrace import initialize_sql_logger
 import uuid
@@ -32,6 +35,7 @@ ROLE_NONE = "none"
 TENANT_NAME_REGEXP = re.compile(r"^[a-z][a-z0-9-]{0,61}[a-z0-9]$")
 
 admin_db: Engine = None
+Base = declarative_base()
 
 app = Flask(__name__)
 
@@ -243,16 +247,17 @@ def retrieve_competition(tenant_db: Engine, id: str) -> Optional[CompetitionRow]
 
 
 @dataclass
-class PlayerScoreRow:
-    tenant_id: int
-    id: str
-    player_id: str
-    competition_id: str
-    score: int
-    row_num: int
-    created_at: int
-    updated_at: int
-
+class PlayerScoreRow(Base):
+    __tablename__ = "player_score"
+    tenant_id = Column(BigInteger, nullable=False)
+    id = Column(String(255), nullable=False, primary_key=True)
+    player_id = Column(String(255), nullable=False)
+    competition_id = Column(String(255), nullable=False)
+    score = Column(BigInteger, nullable=False)
+    row_num = Column(BigInteger, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+    updated_at = Column(BigInteger, nullable=False)
+    rank = Column(BigInteger, nullable=False, default=0)
 
 def lock_file_path(id: int) -> str:
     """排他ロックのためのファイル名を生成する"""
@@ -347,17 +352,16 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     if not competition:
         raise RuntimeError("error retrieveCompetition")
 
+    # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
     visit_history_summary_rows = admin_db.execute(
-        "SELECT player_id, MIN(created_at) AS min_created_at FROM visit_history WHERE tenant_id = %s AND competition_id = %s GROUP BY player_id",
+        "SELECT player_id FROM simple_visit_history WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s",
         tenant_id,
         competition.id,
+        competition.finished_at if bool(competition.finished_at) else datetime.max
     ).fetchall()
 
     billing_map = {}
     for vh in visit_history_summary_rows:
-        # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
-        if bool(competition.finished_at) and competition.finished_at < vh.min_created_at:
-            continue
         billing_map[str(vh.player_id)] = "visitor"
 
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
@@ -366,7 +370,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     try:
         # スコアを登録した参加者のIDを取得する
         scored_player_id_rows = tenant_db.execute(
-            "SELECT DISTINCT(player_id) FROM player_score WHERE tenant_id = ? AND competition_id = ?",
+            "SELECT player_id FROM player_score WHERE tenant_id = ? AND competition_id = ?",
             tenant_id,
             competition.id,
         ).fetchall()
@@ -672,7 +676,7 @@ def competition_score_handler(competition_id: str):
 
     try:
         row_num = 0
-        player_score_rows = []
+        player_score_rows = {}
         for row in csv_reader:
             row_num += 1
             if len(row) != 2:
@@ -686,8 +690,7 @@ def competition_score_handler(competition_id: str):
             score = int(score_str, 10)
             id = dispense_id()
             now = int(datetime.now().timestamp())
-            player_score_rows.append(
-                PlayerScoreRow(
+            player_score_rows[player_id] = PlayerScoreRow(
                     id=id,
                     tenant_id=viewer.tenant_id,
                     player_id=player_id,
@@ -697,7 +700,13 @@ def competition_score_handler(competition_id: str):
                     created_at=now,
                     updated_at=now,
                 )
-            )
+
+        # Sort player_score_rows by score (in desc order) and row_num (in asc order)
+        player_score_rows = sorted(player_score_rows.values(), key=lambda r: (-r.score, r.row_num))
+
+        # Add rank to each row
+        for i, player_score_row in enumerate(player_score_rows):
+            player_score_row.rank = i + 1
 
         tenant_db.execute(
             "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
@@ -705,23 +714,14 @@ def competition_score_handler(competition_id: str):
             competition_id,
         )
 
-        for player_score_row in player_score_rows:
-            tenant_db.execute(
-                "INSERT INTO player_score (id, tenant_id, player_id, competition_id, score, row_num, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                player_score_row.id,
-                player_score_row.tenant_id,
-                player_score_row.player_id,
-                player_score_row.competition_id,
-                player_score_row.score,
-                player_score_row.row_num,
-                player_score_row.created_at,
-                player_score_row.updated_at,
-            )
+        session = Session(bind=tenant_db)
+        session.add_all(player_score_rows)
+        session.commit()
     finally:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         lock_file.close()
 
-    return jsonify(SuccessResult(status=True, data={"rows": len(player_score_rows)}))
+    return jsonify(SuccessResult(status=True, data={"rows": row_num}))
 
 
 @app.route("/api/organizer/billing", methods=["GET"])
@@ -790,33 +790,27 @@ def player_handler(player_id: str):
     if not player:
         abort(404, "player not found")
 
-    competition_rows = tenant_db.execute("SELECT * FROM competition WHERE tenant_id = ? ORDER BY created_at ASC", viewer.tenant_id).fetchall()
-
     # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
     # TODO: ロック不要 -> DONE
 
     try:
-        player_score_rows = []
-        for competition_row in competition_rows:
-            # 最後にCSVに登場したスコアを採用する = row_numが一番大きいもの
-            player_score_row = tenant_db.execute(
-                "SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? AND player_id = ? ORDER BY row_num DESC LIMIT 1",
-                viewer.tenant_id,
-                competition_row.id,
-                player.id,
-            ).fetchone()
-            if not player_score_row:
-                # 行がない = スコアが記録されてない
-                continue
-            player_score_rows.append(PlayerScoreRow(**player_score_row))
+        player_score_rows = tenant_db.execute(
+            "SELECT competition.title AS competition_title, player_score.score \
+            FROM player_score INNER JOIN competition \
+            ON player_score.competition_id = competition.id \
+            WHERE player_score.player_id = ? \
+            ORDER BY competition.created_at ASC, player_score.row_num DESC",
+            player.id
+        )
 
         player_score_details = []
+
         for player_score_row in player_score_rows:
-            competition = retrieve_competition(tenant_db, player_score_row.competition_id)
-            if not competition:
-                continue
             player_score_details.append(
-                PlayerScoreDetail(competition_title=competition.title, score=player_score_row.score)
+                PlayerScoreDetail(
+                    competition_title=player_score_row.competition_title,
+                    score=player_score_row.score,
+                )
             )
     finally:
         pass
@@ -868,11 +862,10 @@ def competition_ranking_handler(competition_id):
         raise RuntimeError(f"Error Select tenant: id={viewer.tenant_id}")
 
     admin_db.execute(
-        "INSERT INTO visit_history (player_id, tenant_id, competition_id, created_at, updated_at) VALUES (%s, %s, %s, %s, %s)",
+        "INSERT INTO simple_visit_history (player_id, tenant_id, competition_id, created_at) VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE player_id = player_id",
         viewer.player_id,
         tenant_row.id,
         competition_id,
-        now,
         now,
     )
 
@@ -886,51 +879,28 @@ def competition_ranking_handler(competition_id):
 
     try:
         player_score_rows = tenant_db.execute(
-            "SELECT * FROM player_score WHERE tenant_id = ? AND competition_id = ? ORDER BY row_num DESC",
-            tenant_row.id,
+            "SELECT player_score.rank, player_score.player_id, player_score.score, player.display_name \
+            FROM player_score INNER JOIN player \
+            ON player_score.player_id = player.id \
+            WHERE player_score.competition_id = ? AND player_score.rank > ? \
+            ORDER BY rank \
+            LIMIT 100",
             competition_id,
+            rank_after,
         ).fetchall()
 
-        ranks = []
-        scored_player_set = {}
-        for player_score_row in player_score_rows:
-            # player_scoreが同一player_id内ではrow_numの降順でソートされているので
-            # 現れたのが2回目以降のplayer_idはより大きいrow_numでスコアが出ているとみなせる
-            if scored_player_set.get(player_score_row.player_id) is not None:
-                continue
-
-            scored_player_set[player_score_row.player_id] = {}
-            player = retrieve_player(tenant_db, player_score_row.player_id)
-            if not player:
-                raise RuntimeError("error retrievePlayer")
-            ranks.append(
-                CompetitionRank(
-                    rank=0,
-                    score=player_score_row.score,
-                    player_id=player.id,
-                    player_display_name=player.display_name,
-                    row_num=player_score_row.row_num,
-                )
-            )
-
-        ranks.sort(key=lambda rank: rank.row_num)
-        ranks.sort(key=lambda rank: rank.score, reverse=True)
-
         paged_ranks = []
-        for i, rank in enumerate(ranks):
-            if i < rank_after:
-                continue
+
+        for player_score_row in player_score_rows:
             paged_ranks.append(
                 CompetitionRank(
-                    rank=i + 1,
-                    score=rank.score,
-                    player_id=rank.player_id,
-                    player_display_name=rank.player_display_name,
+                    rank=player_score_row.rank,
+                    score=player_score_row.score,
+                    player_id=player_score_row.player_id,
+                    player_display_name=player_score_row.display_name,
                     row_num=0,
                 )
             )
-            if len(paged_ranks) >= 100:
-                break
     finally:
         pass
 
@@ -1056,5 +1026,7 @@ def initialize_handler():
     return jsonify(SuccessResult(status=True, data={"lang": "python"}))
 
 
-if __name__ == "__main__":
-    run()
+@uwsgidecorators.postfork
+def init():
+    global admin_db
+    admin_db = connect_admin_db()
