@@ -703,7 +703,7 @@ def competition_score_handler(competition_id: str):
 
     session = Session(bind=tenant_db)
 
-    session.query(PlayerScoreRow).filter(PlayerScoreRow.tenant_id == viewer.tenant_id and PlayerScoreRow.competition_id == competition_id).delete(synchronize_session="fetch")
+    session.query(PlayerScoreRow).filter(PlayerScoreRow.tenant_id == viewer.tenant_id, PlayerScoreRow.competition_id == competition_id).delete(synchronize_session="fetch")
 
     session.add_all(player_score_rows)
     session.commit()
