@@ -670,9 +670,9 @@ def competition_score_handler(competition_id: str):
 
     # DELETEしたタイミングで参照が来ると空っぽのランキングになるのでロックする
     # TODO: （下記実装のままなら）これはロックした方が良い。複数のトランザクションにまたがるため
-    lock_file = flock_by_tenant_id(viewer.tenant_id)
-    if not lock_file:
-        raise RuntimeError("error flock_by_tenant_id")
+    # lock_file = flock_by_tenant_id(viewer.tenant_id)
+    # if not lock_file:
+    #     raise RuntimeError("error flock_by_tenant_id")
 
     try:
         row_num = 0
@@ -708,18 +708,21 @@ def competition_score_handler(competition_id: str):
         for i, player_score_row in enumerate(player_score_rows):
             player_score_row.rank = i + 1
 
-        tenant_db.execute(
-            "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
-            viewer.tenant_id,
-            competition_id,
-        )
-
         session = Session(bind=tenant_db)
+
+        session.query(PlayerScoreRow).filter(PlayerScoreRow.tenant_id == viewer.tenant_id and PlayerScoreRow.viewer.tenant_id == competition_id).delete(synchronize_session="fetch")
+        # tenant_db.execute(
+        #     "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
+        #     viewer.tenant_id,
+        #     competition_id,
+        # )
+
         session.add_all(player_score_rows)
         session.commit()
     finally:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        lock_file.close()
+        # fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        # lock_file.close()
+        pass
 
     return jsonify(SuccessResult(status=True, data={"rows": row_num}))
 
