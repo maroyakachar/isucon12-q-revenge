@@ -668,58 +668,45 @@ def competition_score_handler(competition_id: str):
     if header != ["player_id", "score"]:
         abort(400, "invalid CSV headers")
 
-    # DELETEしたタイミングで参照が来ると空っぽのランキングになるのでロックする
-    # TODO: （下記実装のままなら）これはロックした方が良い。複数のトランザクションにまたがるため
-    lock_file = flock_by_tenant_id(viewer.tenant_id)
-    if not lock_file:
-        raise RuntimeError("error flock_by_tenant_id")
+    row_num = 0
+    player_score_rows = {}
+    for row in csv_reader:
+        row_num += 1
+        if len(row) != 2:
+            continue
+        player_id = row[0]
+        score_str = row[1]
+        if retrieve_player(tenant_db, player_id) is None:
+            # 存在しない参加者が含まれている
+            abort(400, f"player not found: {player_id}")
 
-    try:
-        row_num = 0
-        player_score_rows = {}
-        for row in csv_reader:
-            row_num += 1
-            if len(row) != 2:
-                continue
-            player_id = row[0]
-            score_str = row[1]
-            if retrieve_player(tenant_db, player_id) is None:
-                # 存在しない参加者が含まれている
-                abort(400, f"player not found: {player_id}")
+        score = int(score_str, 10)
+        id = dispense_id()
+        now = int(datetime.now().timestamp())
+        player_score_rows[player_id] = PlayerScoreRow(
+                id=id,
+                tenant_id=viewer.tenant_id,
+                player_id=player_id,
+                competition_id=competition_id,
+                score=score,
+                row_num=row_num,
+                created_at=now,
+                updated_at=now,
+            )
 
-            score = int(score_str, 10)
-            id = dispense_id()
-            now = int(datetime.now().timestamp())
-            player_score_rows[player_id] = PlayerScoreRow(
-                    id=id,
-                    tenant_id=viewer.tenant_id,
-                    player_id=player_id,
-                    competition_id=competition_id,
-                    score=score,
-                    row_num=row_num,
-                    created_at=now,
-                    updated_at=now,
-                )
+    # Sort player_score_rows by score (in desc order) and row_num (in asc order)
+    player_score_rows = sorted(player_score_rows.values(), key=lambda r: (-r.score, r.row_num))
 
-        # Sort player_score_rows by score (in desc order) and row_num (in asc order)
-        player_score_rows = sorted(player_score_rows.values(), key=lambda r: (-r.score, r.row_num))
+    # Add rank to each row
+    for i, player_score_row in enumerate(player_score_rows):
+        player_score_row.rank = i + 1
 
-        # Add rank to each row
-        for i, player_score_row in enumerate(player_score_rows):
-            player_score_row.rank = i + 1
+    session = Session(bind=tenant_db)
 
-        tenant_db.execute(
-            "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
-            viewer.tenant_id,
-            competition_id,
-        )
+    session.query(PlayerScoreRow).filter(PlayerScoreRow.tenant_id == viewer.tenant_id and PlayerScoreRow.competition_id == competition_id).delete(synchronize_session="fetch")
 
-        session = Session(bind=tenant_db)
-        session.add_all(player_score_rows)
-        session.commit()
-    finally:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        lock_file.close()
+    session.add_all(player_score_rows)
+    session.commit()
 
     return jsonify(SuccessResult(status=True, data={"rows": row_num}))
 
