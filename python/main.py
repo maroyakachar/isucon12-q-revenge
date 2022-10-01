@@ -4,7 +4,6 @@ import fcntl
 import os
 import re
 import subprocess
-import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from io import TextIOWrapper
@@ -12,7 +11,7 @@ from typing import Any, Optional
 
 import jwt
 from flask import Flask, abort, jsonify, request
-from sqlalchemy import create_engine, Column, BigInteger, String
+from sqlalchemy import create_engine, Column, BigInteger, String, Boolean, Text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.declarative import declarative_base
@@ -203,18 +202,26 @@ def retrieve_tenant_row_from_header() -> TenantRow:
     return TenantRow(**row)
 
 
-@dataclass
-class PlayerRow:
-    tenant_id: int
-    id: str
-    display_name: str
-    is_disqualified: bool
-    created_at: int
-    updated_at: int
+class PlayerRow(Base):
+    __tablename__ = "player"
+    id = Column(String(255), nullable=False, primary_key=True)
+    tenant_id = Column(BigInteger, nullable=False)
+    display_name = Column(Text, nullable=False)
+    is_disqualified = Column(Boolean, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+    updated_at = Column(BigInteger, nullable=False)
 
 
 def json_of_player_row(row: PlayerRow) -> str:
-    return json.dumps(dataclasses.asdict(row))
+    # cannot use dataclasses.asdict() (PlayerRow is not a dataclass)
+    return json.dumps({
+        "tenant_id": row.tenant_id,
+        "id": row.id,
+        "display_name": row.display_name,
+        "is_disqualified": row.is_disqualified,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    })
 
 
 def player_row_of_json(str: str) -> PlayerRow:
@@ -547,23 +554,26 @@ def players_add_handler():
 
     display_names = request.values.getlist("display_name[]")
 
+    players = []
+    serialized_players = {}
     player_details = []
+
     for display_name in display_names:
         id = dispense_id()
 
         now = int(datetime.now().timestamp())
 
-        tenant_db.execute(
-            "INSERT INTO player (id, tenant_id, display_name, is_disqualified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            id,
-            viewer.tenant_id,
-            display_name,
-            False,
-            now,
-            now,
+        player = PlayerRow(
+            id=id,
+            tenant_id=viewer.tenant_id,
+            display_name=display_name,
+            is_disqualified=False,
+            created_at=now,
+            updated_at=now,
         )
 
-        player = retrieve_player(tenant_db, id)
+        players.append(player)
+        serialized_players[f"player:{id}"] = json_of_player_row(player)
         player_details.append(
             PlayerDetail(
                 id=player.id,
@@ -571,6 +581,12 @@ def players_add_handler():
                 is_disqualified=player.is_disqualified,
             )
         )
+
+    session = Session(bind=tenant_db)
+    session.add_all(players)
+    session.commit()
+
+    redis.mset(serialized_players)
 
     return jsonify(SuccessResult(status=True, data={"players": player_details}))
 
@@ -600,7 +616,15 @@ def player_disqualified_handler(player_id: str):
         player_id,
     )
 
-    player = dataclasses.replace(player, is_disqualified=True, updated_at=now)
+    player = PlayerRow(
+        tenant_id=player.tenant_id,
+        id=player.id,
+        display_name=player.display_name,
+        is_disqualified=True,
+        created_at=player.created_at,
+        updated_at=now
+    )
+
     redis.set(f"player:{player_id}", json_of_player_row(player))
 
     return jsonify(
