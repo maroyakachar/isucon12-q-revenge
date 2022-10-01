@@ -710,7 +710,8 @@ def competition_score_handler(competition_id: str):
 
         session = Session(bind=tenant_db)
 
-        session.query(PlayerScoreRow).filter(PlayerScoreRow.tenant_id == viewer.tenant_id and PlayerScoreRow.viewer.tenant_id == competition_id).delete(synchronize_session="fetch")
+        # To specify AND condition, separate conditions by commas
+        session.query(PlayerScoreRow).filter(PlayerScoreRow.tenant_id == viewer.tenant_id, PlayerScoreRow.competition_id == competition_id).delete(synchronize_session="fetch")
         # tenant_db.execute(
         #     "DELETE FROM player_score WHERE tenant_id = ? AND competition_id = ?",
         #     viewer.tenant_id,
