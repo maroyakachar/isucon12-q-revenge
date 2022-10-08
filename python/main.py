@@ -776,6 +776,11 @@ def competition_score_handler(competition_id: str):
     session.add_all(player_score_rows)
     session.commit()
 
+    # Delete cached ranking
+    pattern = f"ranking:{competition_id}:*"
+    for key in redis.scan_iter(pattern, 5000):
+        redis.delete(key)
+
     return jsonify(SuccessResult(status=True, data={"rows": row_num}))
 
 
@@ -892,7 +897,7 @@ class CompetitionRank:
     row_num: int
 
 
-def get_ranking(tenant_id, competition_id, rank_after):
+def retrieve_ranking(tenant_id: str, competition_id: str, rank_after: str):
     tenant_db = connect_to_tenant_db(tenant_id)
 
     player_score_rows = tenant_db.execute(
@@ -920,6 +925,28 @@ def get_ranking(tenant_id, competition_id, rank_after):
         )
 
     return paged_ranks
+
+
+def retrieve_ranking_json(tenant_id: str, competition: CompetitionRow, rank_after: str):
+    key = f"ranking:{competition.id}:{rank_after}"
+
+    if redis.exists(key):
+        return redis.get(key)
+
+    paged_ranks = retrieve_ranking(tenant_id, competition.id, rank_after)
+    paged_ranks_json = flask.json.dumps(SuccessResult(
+        status=True,
+        data={
+            "competition": CompetitionDetail(
+                id=competition.id, title=competition.title, is_finished=bool(competition.finished_at)
+            ),
+            "ranks": paged_ranks,
+        },
+    ))
+
+    redis.set(key, paged_ranks_json)
+
+    return paged_ranks_json
 
 
 @app.route("/api/player/competition/<competition_id>/ranking", methods=["GET"])
@@ -959,19 +986,9 @@ def competition_ranking_handler(competition_id):
     if rank_after_str:
         rank_after = int(rank_after_str)
 
-    paged_ranks = get_ranking(viewer.tenant_id, competition_id, rank_after)
+    paged_ranks_json = retrieve_ranking_json(viewer.tenant_id, competition, rank_after)
 
-    return jsonify(
-        SuccessResult(
-            status=True,
-            data={
-                "competition": CompetitionDetail(
-                    id=competition.id, title=competition.title, is_finished=bool(competition.finished_at)
-                ),
-                "ranks": paged_ranks,
-            },
-        )
-    )
+    return paged_ranks_json
 
 
 @app.route("/api/player/competitions", methods=["GET"])
