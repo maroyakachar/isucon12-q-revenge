@@ -872,30 +872,23 @@ def player_handler(player_id: str):
     if not player:
         abort(404, "player not found")
 
-    # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-    # TODO: ロック不要 -> DONE
+    player_score_rows = tenant_db.execute(
+        "SELECT c.title AS competition_title, ps.score \
+        FROM (SELECT competition_id, score FROM player_score WHERE player_id = ?) AS ps \
+        INNER JOIN competition AS c \
+        ON c.id = ps.competition_id",
+        player.id
+    )
 
-    try:
-        player_score_rows = tenant_db.execute(
-            "SELECT competition.title AS competition_title, player_score.score \
-            FROM player_score INNER JOIN competition \
-            ON player_score.competition_id = competition.id \
-            WHERE player_score.player_id = ? \
-            ORDER BY competition.created_at ASC, player_score.row_num DESC",
-            player.id
-        )
+    player_score_details = []
 
-        player_score_details = []
-
-        for player_score_row in player_score_rows:
-            player_score_details.append(
-                PlayerScoreDetail(
-                    competition_title=player_score_row.competition_title,
-                    score=player_score_row.score,
-                )
+    for player_score_row in player_score_rows:
+        player_score_details.append(
+            PlayerScoreDetail(
+                competition_title=player_score_row.competition_title,
+                score=player_score_row.score,
             )
-    finally:
-        pass
+        )
 
     return jsonify(
         SuccessResult(
