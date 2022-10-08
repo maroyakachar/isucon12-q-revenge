@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from io import TextIOWrapper
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 import jwt
 from flask import Flask, abort, jsonify, request, Response
@@ -941,9 +941,11 @@ class CompetitionRank:
     row_num: int
 
 
-def retrieve_ranking(tenant_id: str, competition_id: str, rank_after: str):
-    tenant_db = connect_to_tenant_db(tenant_id)
-
+def retrieve_ranking(
+    tenant_db: Engine,
+    competition: CompetitionRow,
+    rank_after: str
+) -> List[CompetitionRank]:
     player_score_rows = tenant_db.execute(
         "SELECT player_score.rank, player_score.player_id, player_score.score, player.display_name \
         FROM player_score INNER JOIN player \
@@ -951,7 +953,7 @@ def retrieve_ranking(tenant_id: str, competition_id: str, rank_after: str):
         WHERE player_score.competition_id = ? AND player_score.rank > ? \
         ORDER BY rank \
         LIMIT 100",
-        competition_id,
+        competition.id,
         rank_after,
     ).fetchall()
 
@@ -971,26 +973,32 @@ def retrieve_ranking(tenant_id: str, competition_id: str, rank_after: str):
     return paged_ranks
 
 
-def retrieve_ranking_json(tenant_id: str, competition: CompetitionRow, rank_after: str):
+def retrieve_ranking_response(
+    tenant_db: Engine,
+    competition: CompetitionRow,
+    rank_after: str
+) -> Response:
     key = f"ranking:{competition.id}:{rank_after}"
 
     if redis.exists(key):
-        return redis.get(key)
+        return Response(redis.get(key), mimetype="application/json")
 
-    paged_ranks = retrieve_ranking(tenant_id, competition.id, rank_after)
-    paged_ranks_json = flask.json.dumps(SuccessResult(
+    paged_ranks = retrieve_ranking(tenant_db, competition, rank_after)
+    body = flask.json.dumps(SuccessResult(
         status=True,
         data={
             "competition": CompetitionDetail(
-                id=competition.id, title=competition.title, is_finished=bool(competition.finished_at)
+                id=competition.id,
+                title=competition.title,
+                is_finished=bool(competition.finished_at)
             ),
             "ranks": paged_ranks,
         },
     ))
 
-    redis.set(key, paged_ranks_json)
+    redis.set(key, body)
 
-    return paged_ranks_json
+    return Response(body, mimetype="application/json")
 
 
 @app.route("/api/player/competition/<competition_id>/ranking", methods=["GET"])
@@ -1030,9 +1038,9 @@ def competition_ranking_handler(competition_id):
     if rank_after_str:
         rank_after = int(rank_after_str)
 
-    paged_ranks_json = retrieve_ranking_json(viewer.tenant_id, competition, rank_after)
+    response = retrieve_ranking_response(tenant_db, competition, rank_after)
 
-    return Response(paged_ranks_json, mimetype="application/json")
+    return response
 
 
 @app.route("/api/player/competitions", methods=["GET"])
