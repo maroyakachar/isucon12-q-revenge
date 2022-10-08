@@ -1,6 +1,7 @@
 DROP TABLE IF EXISTS competition;
 DROP TABLE IF EXISTS player;
 DROP TABLE IF EXISTS player_score;
+DROP TABLE IF EXISTS billing_report;
 
 CREATE TABLE competition (
   id VARCHAR(255) NOT NULL PRIMARY KEY,
@@ -30,4 +31,15 @@ CREATE TABLE player_score (
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
   rank BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE billing_report (
+  competition_id VARCHAR(255) NOT NULL,
+  competition_title VARCHAR(255) NOT NULL,
+  player_count BIGINT UNSIGNED NOT NULL,
+  visitor_count BIGINT UNSIGNED NOT NULL,
+  billing_player_yen BIGINT UNSIGNED NOT NULL,
+  billing_visitor_yen BIGINT UNSIGNED NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
 );

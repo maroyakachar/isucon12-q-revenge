@@ -3,6 +3,7 @@ USE `isuports`;
 DROP TABLE IF EXISTS `tenant`;
 DROP TABLE IF EXISTS `id_generator`;
 DROP TABLE IF EXISTS `visit_history`;
+DROP TABLE IF EXISTS `billing_report`;
 
 CREATE TABLE `tenant` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
@@ -28,4 +29,16 @@ CREATE TABLE `visit_history` (
   `created_at` BIGINT NOT NULL,
   `updated_at` BIGINT NOT NULL,
   INDEX `tenant_id_idx` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;
+
+CREATE TABLE `billing_report` (
+  `competition_id` VARCHAR(255) NOT NULL,
+  `competition_title` VARCHAR(255) NOT NULL,
+  `player_count` BIGINT UNSIGNED NOT NULL,
+  `visitor_count` BIGINT UNSIGNED NOT NULL,
+  `billing_player_yen` BIGINT UNSIGNED NOT NULL,
+  `billing_visitor_yen` BIGINT UNSIGNED NOT NULL,
+  `created_at` BIGINT NOT NULL,
+  `updated_at` BIGINT NOT NULL,
+  INDEX `competition_id_idx` (`competition_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;
