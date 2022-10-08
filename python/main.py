@@ -5,7 +5,6 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from dataclasses import asdict
 from datetime import datetime
 from io import TextIOWrapper
 from typing import Any, Optional
@@ -88,6 +87,7 @@ def dispense_id() -> str:
     # TODO: IDをuuid貼り付ける -> DONE
     """システム全体で一意なIDを生成する"""
     return uuid.uuid4().hex
+
 
 @app.after_request
 def add_header(response):
@@ -318,6 +318,7 @@ class PlayerScoreRow(Base):
     updated_at = Column(BigInteger, nullable=False)
     rank = Column(BigInteger, nullable=False, default=0)
 
+
 def lock_file_path(id: int) -> str:
     """排他ロックのためのファイル名を生成する"""
     tenant_db_dir = os.getenv("ISUCON_TENANT_DB_DIR", "../tenant_db")
@@ -455,28 +456,25 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     for vh in visit_history_summary_rows:
         billing_map[str(vh.player_id)] = "visitor"
 
-    try:
-        # スコアを登録した参加者のIDを取得する
-        scored_player_id_rows = tenant_db.execute(
-            "SELECT player_id FROM player_score WHERE tenant_id = ? AND competition_id = ?",
-            tenant_id,
-            competition.id,
-        ).fetchall()
+    # スコアを登録した参加者のIDを取得する
+    scored_player_id_rows = tenant_db.execute(
+        "SELECT player_id FROM player_score WHERE tenant_id = ? AND competition_id = ?",
+        tenant_id,
+        competition.id,
+    ).fetchall()
 
-        for pid in scored_player_id_rows:
-            # スコアが登録されている参加者
-            billing_map[str(pid.player_id)] = "player"
+    for pid in scored_player_id_rows:
+        # スコアが登録されている参加者
+        billing_map[str(pid.player_id)] = "player"
 
-        player_count = 0
-        visitor_count = 0
-        if bool(competition.finished_at):
-            for category in billing_map.values():
-                if category == "player":
-                    player_count += 1
-                if category == "visitor":
-                    visitor_count += 1
-    finally:
-        pass
+    player_count = 0
+    visitor_count = 0
+    if bool(competition.finished_at):
+        for category in billing_map.values():
+            if category == "player":
+                player_count += 1
+            if category == "visitor":
+                visitor_count += 1
 
     result = BillingReport(
         competition_id=competition.id,
