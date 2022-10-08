@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
+from dataclasses import asdict
 from datetime import datetime
 from io import TextIOWrapper
 from typing import Any, Optional
@@ -400,6 +401,31 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
         )
 
     # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
+    redis_key = f"competition_id:{competition_id}"
+    cached_billing_report = redis.get(redis_key)
+    if cached_billing_report is not None:
+        return BillingReport(cached_billing_report)
+
+    # データベースにbilling_reoprtがあれば利用
+    billing_report_row = admin_db.execute(
+        "SELECT player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen FROM billing_report WHERE competition_id = %s AND created_at <= %s",
+        competition.id,
+        competition.finished_at if bool(competition.finished_at) else datetime.max
+    ).fetchone()
+    
+    redis.hset(redis_key, asdict(billing_report_row))
+
+    if billing_report_row:
+        return BillingReport(
+            competition_id=competition.id,
+            competition_title=competition.title,
+            player_count=billing_report_row.player_count,
+            visitor_count=billing_report_row.visitor_count,
+            billing_player_yen=billing_report_row.billing_player_yen,
+            billing_visitor_yen=billing_report_row.billing_visitor_yen,
+            billing_yen=billing_report_row.billing_yen,
+        )
+    
     visit_history_summary_rows = admin_db.execute(
         "SELECT player_id FROM simple_visit_history WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s",
         tenant_id,
@@ -410,9 +436,6 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     billing_map = {}
     for vh in visit_history_summary_rows:
         billing_map[str(vh.player_id)] = "visitor"
-
-    # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-    # TODO: ロック不要 -> DONE
 
     try:
         # スコアを登録した参加者のIDを取得する
@@ -437,7 +460,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     finally:
         pass
 
-    return BillingReport(
+    result = BillingReport(
         competition_id=competition.id,
         competition_title=competition.title,
         player_count=player_count,
@@ -446,6 +469,10 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
         billing_visitor_yen=10 * visitor_count,
         billing_yen=100 * player_count + 10 * visitor_count,
     )
+
+    redis.hset(redis_key, asdict(result))
+
+    return result
 
 
 @dataclass
