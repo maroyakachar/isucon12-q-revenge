@@ -790,23 +790,29 @@ def competition_score_handler(competition_id: str):
             continue
         player_id = row[0]
         score_str = row[1]
-        if retrieve_player(tenant_db, player_id) is None:
-            # 存在しない参加者が含まれている
-            abort(400, f"player not found: {player_id}")
 
         score = int(score_str, 10)
         id = dispense_id()
         now = int(datetime.now().timestamp())
         player_score_rows[player_id] = PlayerScoreRow(
-                id=id,
-                tenant_id=viewer.tenant_id,
-                player_id=player_id,
-                competition_id=competition_id,
-                score=score,
-                row_num=row_num,
-                created_at=now,
-                updated_at=now,
-            )
+            id=id,
+            tenant_id=viewer.tenant_id,
+            player_id=player_id,
+            competition_id=competition_id,
+            score=score,
+            row_num=row_num,
+            created_at=now,
+            updated_at=now,
+        )
+
+    session = Session(bind=tenant_db)
+
+    # Check the existence of players
+    player_list = list(player_score_rows.keys())
+    player_count = session.query(PlayerRow.id).filter(PlayerRow.id.in_(player_list)).count()
+
+    if player_count < len(player_list):
+        abort(400, "there exists an invalid player")
 
     # Sort player_score_rows by score (in desc order) and row_num (in asc order)
     player_score_rows = sorted(player_score_rows.values(), key=lambda r: (-r.score, r.row_num))
@@ -814,8 +820,6 @@ def competition_score_handler(competition_id: str):
     # Add rank to each row
     for i, player_score_row in enumerate(player_score_rows):
         player_score_row.rank = i + 1
-
-    session = Session(bind=tenant_db)
 
     session.query(PlayerScoreRow).filter(
         PlayerScoreRow.tenant_id == viewer.tenant_id,
