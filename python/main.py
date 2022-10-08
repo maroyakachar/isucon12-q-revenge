@@ -383,6 +383,22 @@ class BillingReport:
     billing_yen: int  # 合計請求金額
 
 
+def json_of_billing_report(billing_report: BillingReport) -> str:
+    return json.dumps({
+        "competition_id": billing_report.competition_id,
+        "competition_title": billing_report.competition_title,
+        "player_count": billing_report.player_count,
+        "visitor_count": billing_report.visitor_count,
+        "billing_player_yen": billing_report.billing_player_yen,
+        "billing_visitor_yen": billing_report.billing_visitor_yen,
+        "billing_yen": billing_report.billing_yen,
+    })
+
+
+def billing_report_of_json(str: str) -> BillingReport:
+    return BillingReport(**json.loads(str))
+
+
 def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition_id: str):
     """大会ごとの課金レポートを計算する"""
     competition = retrieve_competition(tenant_db, competition_id)
@@ -403,30 +419,9 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
 
     # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
     redis_key = f"competition_id:{competition_id}"
-    cached_billing_report = redis.get(redis_key)
-    if cached_billing_report is not None:
-        return BillingReport(cached_billing_report)
+    if redis.exists(redis_key):
+        return billing_report_of_json(redis.get(redis_key))
 
-    # データベースにbilling_reoprtがあれば利用
-    billing_report_row = admin_db.execute(
-        "SELECT player_count, visitor_count, billing_player_yen, billing_visitor_yen, billing_yen FROM billing_report WHERE competition_id = %s AND created_at <= %s",
-        competition.id,
-        competition.finished_at if bool(competition.finished_at) else datetime.max
-    ).fetchone()
-    
-    redis.hset(redis_key, asdict(billing_report_row))
-
-    if billing_report_row:
-        return BillingReport(
-            competition_id=competition.id,
-            competition_title=competition.title,
-            player_count=billing_report_row.player_count,
-            visitor_count=billing_report_row.visitor_count,
-            billing_player_yen=billing_report_row.billing_player_yen,
-            billing_visitor_yen=billing_report_row.billing_visitor_yen,
-            billing_yen=billing_report_row.billing_yen,
-        )
-    
     visit_history_summary_rows = admin_db.execute(
         "SELECT player_id FROM simple_visit_history WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s",
         tenant_id,
@@ -471,7 +466,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
         billing_yen=100 * player_count + 10 * visitor_count,
     )
 
-    redis.hset(redis_key, asdict(result))
+    redis.set(redis_key, json_of_billing_report(result))
 
     return result
 
