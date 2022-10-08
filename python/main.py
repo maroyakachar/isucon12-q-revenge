@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 import jwt
 from flask import Flask, abort, jsonify, request
+import flask.json
 from sqlalchemy import create_engine, Column, BigInteger, String, Boolean, Text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -891,6 +892,36 @@ class CompetitionRank:
     row_num: int
 
 
+def get_ranking(tenant_id, competition_id, rank_after):
+    tenant_db = connect_to_tenant_db(tenant_id)
+
+    player_score_rows = tenant_db.execute(
+        "SELECT player_score.rank, player_score.player_id, player_score.score, player.display_name \
+        FROM player_score INNER JOIN player \
+        ON player_score.player_id = player.id \
+        WHERE player_score.competition_id = ? AND player_score.rank > ? \
+        ORDER BY rank \
+        LIMIT 100",
+        competition_id,
+        rank_after,
+    ).fetchall()
+
+    paged_ranks = []
+
+    for player_score_row in player_score_rows:
+        paged_ranks.append(
+            CompetitionRank(
+                rank=player_score_row.rank,
+                score=player_score_row.score,
+                player_id=player_score_row.player_id,
+                player_display_name=player_score_row.display_name,
+                row_num=0,
+            )
+        )
+
+    return paged_ranks
+
+
 @app.route("/api/player/competition/<competition_id>/ranking", methods=["GET"])
 def competition_ranking_handler(competition_id):
     """
@@ -928,35 +959,7 @@ def competition_ranking_handler(competition_id):
     if rank_after_str:
         rank_after = int(rank_after_str)
 
-    # player_scoreを読んでいるときに更新が走ると不整合が起こるのでロックを取得する
-    # TODO: ロック不要 -> DONE
-
-    try:
-        player_score_rows = tenant_db.execute(
-            "SELECT player_score.rank, player_score.player_id, player_score.score, player.display_name \
-            FROM player_score INNER JOIN player \
-            ON player_score.player_id = player.id \
-            WHERE player_score.competition_id = ? AND player_score.rank > ? \
-            ORDER BY rank \
-            LIMIT 100",
-            competition_id,
-            rank_after,
-        ).fetchall()
-
-        paged_ranks = []
-
-        for player_score_row in player_score_rows:
-            paged_ranks.append(
-                CompetitionRank(
-                    rank=player_score_row.rank,
-                    score=player_score_row.score,
-                    player_id=player_score_row.player_id,
-                    player_display_name=player_score_row.display_name,
-                    row_num=0,
-                )
-            )
-    finally:
-        pass
+    paged_ranks = get_ranking(viewer.tenant_id, competition_id, rank_after)
 
     return jsonify(
         SuccessResult(
