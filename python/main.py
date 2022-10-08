@@ -274,11 +274,33 @@ class CompetitionRow:
     updated_at: int
 
 
+def json_of_competition_row(row: CompetitionRow) -> str:
+    return json.dumps({
+        "tenant_id": row.tenant_id,
+        "id": row.id,
+        "title": row.title,
+        "finished_at": row.finished_at,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    })
+
+
+def competition_row_of_json(str: str) -> CompetitionRow:
+    return CompetitionRow(**json.loads(str))
+
+
 def retrieve_competition(tenant_db: Engine, id: str) -> Optional[CompetitionRow]:
     """大会を取得する"""
+    key = f"competition:{id}"
+
+    if redis.exists(key):
+        return competition_row_of_json(redis.get(key))
+
     row = tenant_db.execute("SELECT * FROM competition WHERE id = ?", id).fetchone()
     if not row:
         return None
+
+    redis.set(key, json_of_competition_row(row))
 
     return CompetitionRow(**row)
 
@@ -418,7 +440,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
         )
 
     # competition.finished_atよりもあとの場合は、終了後に訪問したとみなして大会開催内アクセス済みとみなさない
-    redis_key = f"competition_id:{competition_id}"
+    redis_key = f"billing_report:{competition_id}"
     if redis.exists(redis_key):
         return billing_report_of_json(redis.get(redis_key))
 
@@ -728,6 +750,8 @@ def competition_finish_handler(competition_id: str):
         now,
         competition_id,
     )
+
+    redis.delete(f"competition:{competition_id}")
 
     return jsonify({"status": True})
 
