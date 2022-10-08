@@ -947,12 +947,13 @@ def retrieve_ranking(
     rank_after: str
 ) -> List[CompetitionRank]:
     player_score_rows = tenant_db.execute(
-        "SELECT player_score.rank, player_score.player_id, player_score.score, player.display_name \
-        FROM player_score INNER JOIN player \
-        ON player_score.player_id = player.id \
-        WHERE player_score.competition_id = ? AND player_score.rank > ? \
-        ORDER BY rank \
-        LIMIT 100",
+        "SELECT ps.rank, ps.player_id, ps.score, player.display_name \
+        FROM (SELECT rank, player_id, score  \
+              FROM player_score \
+              WHERE competition_id = ? AND rank > ? \
+              ORDER BY rank LIMIT 100) AS ps \
+        INNER JOIN player \
+        ON ps.player_id = player.id",
         competition.id,
         rank_after,
     ).fetchall()
