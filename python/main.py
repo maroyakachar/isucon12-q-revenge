@@ -10,7 +10,7 @@ from io import TextIOWrapper
 from typing import Any, Optional
 
 import jwt
-from flask import Flask, abort, jsonify, request
+from flask import Flask, abort, jsonify, request, Response
 import flask.json
 from sqlalchemy import create_engine, Column, BigInteger, String, Boolean, Text
 from sqlalchemy.engine import Engine
@@ -988,7 +988,7 @@ def competition_ranking_handler(competition_id):
 
     paged_ranks_json = retrieve_ranking_json(viewer.tenant_id, competition, rank_after)
 
-    return paged_ranks_json
+    return Response(paged_ranks_json, mimetype="application/json")
 
 
 @app.route("/api/player/competitions", methods=["GET"])
