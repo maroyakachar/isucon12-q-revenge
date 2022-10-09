@@ -32,6 +32,18 @@ ISUCON 12 予選の復習をしています。使用言語はPythonです。
 - 大会終了前の課金レポートを適当に返す (Score: ?, [753d4e7](https://github.com/everlasting-end/isucon12-q-revenge/commit/753d4e7f318314606e424d660b91c2e516197cf2))
 - プレイヤー情報をキャッシュする (Score: 10294, [afc7fbf](https://github.com/everlasting-end/isucon12-q-revenge/commit/afc7fbfea7a9c9d825d51234aaddbdfec370833d))
 - プレイヤーの追加にbulk insertを用いる (Score: 13387, [ad5b177](https://github.com/everlasting-end/isucon12-q-revenge/commit/ad5b1775191d7b13d7c00a759dd2ac265e6017e2))
+- ランキングをキャッシュする (Score: 13788, [8df1e3a](https://github.com/everlasting-end/isucon12-q-revenge/commit/8df1e3ac67ae932f6efe390b51009a9b158625c3))
+- 課金レポートをキャッシュする (Score: 15231, [6160649](https://github.com/everlasting-end/isucon12-q-revenge/commit/61606494d9d0915e9e7d987c64e566e22f87b89c))
+- このあたりからエラーが増えてきた
+- `/api/player/player/<player_id>`のSQL文を改善 (Score: 16600, [232ba46](https://github.com/everlasting-end/isucon12-q-revenge/commit/232ba46e5a1793f20db44ac39b4dd4388d8fe899))
+- ワーカーを6個に増やす (Score: 15925, [e3af125](https://github.com/everlasting-end/isucon12-q-revenge/commit/e3af125ec21fca1046f3b99e86f84e762c870527))
+  + エラーは減らなかった
+- 大会情報をキャッシュする (Score: 16446, [cdfd4c5](https://github.com/everlasting-end/isucon12-q-revenge/commit/cdfd4c5fd2b617649d700f87c9b0127b0bf1525c))
+- 複数のプレイヤーの存在判定を1回のクエリで行う (Score: 19669, [3a992a8](https://github.com/everlasting-end/isucon12-q-revenge/commit/3a992a872b5b35f8fe2d590c039281654ee77bf4))
+- ランキング作成に使うSQL文を改善 (Score: 19836, [dc6bf35](https://github.com/everlasting-end/isucon12-q-revenge/commit/dc6bf3570b6d9a98e1fc4dbb79696359508da128))
+- `/api/organizer/players`のSQL文を高速化するためにインデックスを作成 (Score: 12414, [ca3f2aa](https://github.com/everlasting-end/isucon12-q-revenge/commit/ca3f2aaa86f82168c76916d0d5afbede06a64c60))
+- listen queueを大きくする (Score: 20398, [addafb0](https://github.com/everlasting-end/isucon12-q-revenge/commit/addafb0dad30260fdd45838603b1b40bf6780d9f))
+  + エラーがなくなり安定するようになった
 
 ## 張ったインデックスが`/initialize`によって消されないか
 `/initialize`のハンドラの中身を見ると、`webapp/sql/init.sh`が実行されていることが分かります。
@@ -80,3 +92,9 @@ def init():
 `webapp/docker-compose-python.yml`の中で`ISUCON_SQLITE_TRACE_FILE`という名前の環境変数にログの出力先のパスを指定するだけで
 ログを取れました。
 
+## listen queueを大きくする
+改善を進めていくと、ベンチマーカーによる同時接続を捌ききれなくなり、次のようなメッセージがログに現れるようになりました。
+```
+*** uWSGI listen queue of socket "127.0.0.1:12345" (fd: 3) full !!! (101/100) ***
+```
+listen queueを大きくすれば解決するので、uwsgiの設定ファイルに`listen = 1000`を加えて対処しました。
