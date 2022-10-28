@@ -32,13 +32,13 @@ CREATE TABLE `visit_history` (
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;
 
 CREATE TABLE `billing_report` (
+  `tenant_id` BIGINT UNSIGNED NOT NULL,
   `competition_id` VARCHAR(255) NOT NULL,
   `competition_title` VARCHAR(255) NOT NULL,
   `player_count` BIGINT UNSIGNED NOT NULL,
   `visitor_count` BIGINT UNSIGNED NOT NULL,
   `billing_player_yen` BIGINT UNSIGNED NOT NULL,
   `billing_visitor_yen` BIGINT UNSIGNED NOT NULL,
-  `created_at` BIGINT NOT NULL,
-  `updated_at` BIGINT NOT NULL,
-  INDEX `competition_id_idx` (`competition_id`)
+  `billing_yen` BIGINT UNSIGNED NOT NULL
+  -- PRIMARY KEY (`tenant_id`, `competition_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;

@@ -422,6 +422,83 @@ def billing_report_of_json(str: str) -> BillingReport:
     return BillingReport(**json.loads(str))
 
 
+def compute_billing_report(
+    tenant_db: Engine,
+    tenant_id: int,
+    competition: CompetitionRow
+):
+    visit_history_summary_rows = admin_db.execute(
+        """
+        SELECT player_id FROM simple_visit_history
+        WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s
+        """,
+        tenant_id,
+        competition.id,
+        competition.finished_at
+    ).fetchall()
+
+    billing_map = {}
+    for vh in visit_history_summary_rows:
+        billing_map[str(vh.player_id)] = "visitor"
+
+    # スコアを登録した参加者のIDを取得する
+    scored_player_id_rows = tenant_db.execute(
+        """
+        SELECT player_id FROM player_score
+        WHERE tenant_id = ? AND competition_id = ?
+        """,
+        tenant_id,
+        competition.id,
+    ).fetchall()
+
+    for pid in scored_player_id_rows:
+        # スコアが登録されている参加者
+        billing_map[str(pid.player_id)] = "player"
+
+    player_count = 0
+    visitor_count = 0
+    for category in billing_map.values():
+        if category == "player":
+            player_count += 1
+        if category == "visitor":
+            visitor_count += 1
+
+    billing_report = BillingReport(
+        competition_id=competition.id,
+        competition_title=competition.title,
+        player_count=player_count,
+        visitor_count=visitor_count,
+        billing_player_yen=100 * player_count,
+        billing_visitor_yen=10 * visitor_count,
+        billing_yen=100 * player_count + 10 * visitor_count,
+    )
+
+    admin_db.execute(
+        """
+        INSERT INTO billing_report (
+            tenant_id,
+            competition_id,
+            competition_title,
+            player_count,
+            visitor_count,
+            billing_player_yen,
+            billing_visitor_yen,
+            billing_yen
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        tenant_id,
+        billing_report.competition_id,
+        billing_report.competition_title,
+        billing_report.player_count,
+        billing_report.visitor_count,
+        billing_report.billing_player_yen,
+        billing_report.billing_visitor_yen,
+        billing_report.billing_yen
+    )
+
+    return billing_report
+
+
 def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition_id: str):
     """大会ごとの課金レポートを計算する"""
     competition = retrieve_competition(tenant_db, competition_id)
@@ -445,47 +522,7 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     if redis.exists(redis_key):
         return billing_report_of_json(redis.get(redis_key))
 
-    visit_history_summary_rows = admin_db.execute(
-        "SELECT player_id FROM simple_visit_history WHERE tenant_id = %s AND competition_id = %s AND created_at <= %s",
-        tenant_id,
-        competition.id,
-        competition.finished_at if bool(competition.finished_at) else datetime.max
-    ).fetchall()
-
-    billing_map = {}
-    for vh in visit_history_summary_rows:
-        billing_map[str(vh.player_id)] = "visitor"
-
-    # スコアを登録した参加者のIDを取得する
-    scored_player_id_rows = tenant_db.execute(
-        "SELECT player_id FROM player_score WHERE tenant_id = ? AND competition_id = ?",
-        tenant_id,
-        competition.id,
-    ).fetchall()
-
-    for pid in scored_player_id_rows:
-        # スコアが登録されている参加者
-        billing_map[str(pid.player_id)] = "player"
-
-    player_count = 0
-    visitor_count = 0
-    if bool(competition.finished_at):
-        for category in billing_map.values():
-            if category == "player":
-                player_count += 1
-            if category == "visitor":
-                visitor_count += 1
-
-    result = BillingReport(
-        competition_id=competition.id,
-        competition_title=competition.title,
-        player_count=player_count,
-        visitor_count=visitor_count,
-        billing_player_yen=100 * player_count,
-        billing_visitor_yen=10 * visitor_count,
-        billing_yen=100 * player_count + 10 * visitor_count,
-    )
-
+    result = compute_billing_report(tenant_db, tenant_id, competition)
     redis.set(redis_key, json_of_billing_report(result))
 
     return result
