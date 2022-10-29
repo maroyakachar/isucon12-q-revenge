@@ -1,19 +1,20 @@
 +-------+----------------------------------------+----------+-------+-------+
 | COUNT |                  URI                   |   SUM    |  MAX  |  AVG  |
 +-------+----------------------------------------+----------+-------+-------+
-| 8315  | /api/player/player/\w+                 | 6840.940 | 1.632 | 0.823 |
-| 4271  | /api/player/competition/\w+/ranking    | 3010.496 | 1.632 | 0.705 |
-| 822   | /api/player/competitions               | 399.564  | 1.608 | 0.486 |
-| 144   | /api/organizer/competition/\w+/score   | 96.108   | 2.136 | 0.667 |
-| 124   | /api/organizer/players                 | 70.524   | 1.608 | 0.569 |
-| 136   | /api/admin/tenants/billing             | 67.560   | 1.644 | 0.497 |
-| 131   | /api/organizer/competitions/add        | 65.368   | 1.584 | 0.499 |
-| 122   | /api/organizer/competition/\w+/finish  | 63.484   | 1.480 | 0.520 |
-| 106   | /api/organizer/billing                 | 59.828   | 1.504 | 0.564 |
-| 34    | /api/organizer/players/add             | 16.040   | 1.580 | 0.472 |
-| 20    | /api/admin/tenants/add                 | 4.152    | 1.008 | 0.208 |
-| 10    | /api/organizer/player/\w+/disqualified | 2.836    | 1.400 | 0.284 |
-| 1     | /initialize                            | 0.580    | 0.580 | 0.580 |
+| 8735  | /api/player/player/\w+                 | 7430.999 | 1.528 | 0.851 |
+| 4510  | /api/player/competition/\w+/ranking    | 3351.436 | 1.532 | 0.743 |
+| 844   | /api/player/competitions               | 439.578  | 1.504 | 0.521 |
+| 148   | /api/organizer/competition/\w+/score   | 103.698  | 2.044 | 0.701 |
+| 129   | /api/organizer/players                 | 75.600   | 1.668 | 0.586 |
+| 136   | /api/organizer/competitions/add        | 73.240   | 1.472 | 0.539 |
+| 123   | /api/organizer/competition/\w+/finish  | 69.955   | 1.528 | 0.569 |
+| 143   | /api/admin/tenants/billing             | 67.343   | 1.732 | 0.471 |
+| 109   | /api/organizer/billing                 | 64.191   | 1.532 | 0.589 |
+| 33    | /api/organizer/players/add             | 14.460   | 1.412 | 0.438 |
+| 21    | /api/admin/tenants/add                 | 4.784    | 1.412 | 0.228 |
+| 1     | /initialize                            | 3.356    | 3.356 | 3.356 |
+| 9     | /api/organizer/player/\w+/disqualified | 2.496    | 1.208 | 0.277 |
+| 2     | -                                      | 0.482    | 0.241 | 0.241 |
 | 1     | /api/organizer/competitions            | 0.004    | 0.004 | 0.004 |
 | 1     | /css/app.83b4c321.css                  | 0.000    | 0.000 | 0.000 |
 | 1     | /js/app.3a4ec98c.js                    | 0.000    | 0.000 | 0.000 |

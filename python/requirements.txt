@@ -1,4 +1,4 @@
-Flask
+Flask[async]
 Flask-SQLAlchemy
 mysql-connector-python
 pyjwt[crypto]

@@ -39,6 +39,6 @@ CREATE TABLE `billing_report` (
   `visitor_count` BIGINT UNSIGNED NOT NULL,
   `billing_player_yen` BIGINT UNSIGNED NOT NULL,
   `billing_visitor_yen` BIGINT UNSIGNED NOT NULL,
-  `billing_yen` BIGINT UNSIGNED NOT NULL
-  -- PRIMARY KEY (`tenant_id`, `competition_id`)
+  `billing_yen` BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (`tenant_id`, `competition_id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET=utf8mb4;

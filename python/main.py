@@ -24,6 +24,7 @@ from sqltrace import initialize_sql_logger
 import uuid
 from redis import Redis
 import json
+import asyncio
 
 INITIALIZE_SCRIPT = "../sql/init.sh"
 COOKIE_NAME = "isuports_session"
@@ -422,7 +423,7 @@ def billing_report_of_json(str: str) -> BillingReport:
     return BillingReport(**json.loads(str))
 
 
-def compute_billing_report(
+async def compute_billing_report(
     tenant_db: Engine,
     tenant_id: int,
     competition: CompetitionRow
@@ -522,7 +523,25 @@ def billing_report_by_competition(tenant_db: Engine, tenant_id: int, competition
     if redis.exists(redis_key):
         return billing_report_of_json(redis.get(redis_key))
 
-    result = compute_billing_report(tenant_db, tenant_id, competition)
+    row = admin_db.execute(
+        """
+        SELECT * FROM billing_report
+        WHERE tenant_id = %s AND competition_id = %s
+        """,
+        tenant_id,
+        competition_id
+    ).fetchone()
+
+    result = BillingReport(
+        competition_id=row.competition_id,
+        competition_title=row.competition_title,
+        player_count=row.player_count,
+        visitor_count=row.visitor_count,
+        billing_player_yen=row.billing_player_yen,
+        billing_visitor_yen=row.billing_visitor_yen,
+        billing_yen=row.billing_yen
+    )
+
     redis.set(redis_key, json_of_billing_report(result))
 
     return result
@@ -779,14 +798,23 @@ def competition_finish_handler(competition_id: str):
 
     now = int(datetime.now().timestamp())
 
+    competition.finished_at = now
+    competition.updated_at = now
+
     tenant_db.execute(
         "UPDATE competition SET finished_at = ?, updated_at = ? WHERE id = ?",
-        now,
-        now,
+        competition.finished_at,
+        competition.updated_at,
         competition_id,
     )
 
     redis.delete(f"competition:{competition_id}")
+
+    # TODO: Confirm compute_billing_report is executed in the background
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(
+        compute_billing_report(tenant_db, viewer.tenant_id, competition)
+    )
 
     return jsonify({"status": True})
 
@@ -1176,7 +1204,7 @@ def me_handler():
 
 
 @app.route("/initialize", methods=["POST"])
-def initialize_handler():
+async def initialize_handler():
     """
     ベンチマーカー向けAPI
     ベンチマーカーが起動したときに最初に呼ぶ
