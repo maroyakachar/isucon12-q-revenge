@@ -72,6 +72,10 @@ def tenant_db_path(id: int) -> str:
 def connect_to_tenant_db(id: int) -> Engine:
     """テナントDBに接続する"""
     path = tenant_db_path(id)
+
+    if not os.path.exists(path):
+        create_tenant_db(id)
+
     engine = create_engine(f"sqlite:///{path}")
     return initialize_sql_logger(engine)
 
@@ -369,11 +373,6 @@ def tenants_add_handler():
         id = res.lastrowid
     except IntegrityError:  # duplicate entry
         abort(400, "duplicate tenant")
-
-    # NOTE: 先にadminDBに書き込まれることでこのAPIの処理中に
-    #       /api/admin/tenants/billingにアクセスされるとエラーになりそう
-    #       ロックなどで対処したほうが良さそう
-    create_tenant_db(id)
 
     return jsonify(
         SuccessResult(
