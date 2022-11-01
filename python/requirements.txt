@@ -2,5 +2,5 @@ Flask[async]
 Flask-SQLAlchemy
 mysql-connector-python
 pyjwt[crypto]
-uwsgi
+uvicorn
 redis

@@ -18,13 +18,14 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
 from werkzeug.exceptions import HTTPException
-import uwsgidecorators
 
 from sqltrace import initialize_sql_logger
 import uuid
 from redis import Redis
 import json
 import asyncio
+from asgiref.wsgi import WsgiToAsgi
+import uvicorn
 
 INITIALIZE_SCRIPT = "../sql/init.sh"
 COOKIE_NAME = "isuports_session"
@@ -43,6 +44,7 @@ redis = None
 Base = declarative_base()
 
 app = Flask(__name__)
+asgi_app = WsgiToAsgi(app)
 
 
 def connect_admin_db() -> Engine:
@@ -780,7 +782,7 @@ def competitions_add_handler():
 
 
 @app.route("/api/organizer/competition/<competition_id>/finish", methods=["POST"])
-def competition_finish_handler(competition_id: str):
+async def competition_finish_handler(competition_id: str):
     """
     テナント管理者向けAPI
     大会を終了する
@@ -809,9 +811,7 @@ def competition_finish_handler(competition_id: str):
 
     redis.delete(f"competition:{competition_id}")
 
-    # TODO: Confirm compute_billing_report is executed in the background
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(
+    asyncio.create_task(
         compute_billing_report(tenant_db, viewer.tenant_id, competition)
     )
 
@@ -1203,7 +1203,7 @@ def me_handler():
 
 
 @app.route("/initialize", methods=["POST"])
-async def initialize_handler():
+def initialize_handler():
     """
     ベンチマーカー向けAPI
     ベンチマーカーが起動したときに最初に呼ぶ
@@ -1218,9 +1218,8 @@ async def initialize_handler():
     return jsonify(SuccessResult(status=True, data={"lang": "python"}))
 
 
-@uwsgidecorators.postfork
-def init():
-    global admin_db
-    admin_db = connect_admin_db()
-    global redis
-    redis = connect_redis()
+admin_db = connect_admin_db()
+redis = connect_redis()
+
+if __name__ == "__main__":
+    uvicorn.run("main:asgi_app", host="0.0.0.0", port=3000, workers=6)

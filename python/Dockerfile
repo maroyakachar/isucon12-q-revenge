@@ -21,4 +21,4 @@ RUN pip install -r requirements.txt
 
 COPY --chown=isucon:isucon ./ /home/isucon/webapp/python/
 
-CMD [ "/home/isucon/.local/bin/uwsgi", "--ini", "uwsgi.ini" ]
+CMD [ "python3", "main.py" ]

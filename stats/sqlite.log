@@ -1,7 +1,7 @@
 +-----------------------+-------+--------------------------------+
 |          avg          | count |           statement            |
 +-----------------------+-------+--------------------------------+
-| 0.0013453274500905429 |  8728 | SELECT c.title AS              |
+|  0.001479652354707806 |  6056 | SELECT c.title AS              |
 |                       |       | competition_title, ps.score    |
 |                       |       |         FROM (SELECT           |
 |                       |       | competition_id, score FROM     |
@@ -9,14 +9,16 @@
 |                       |       | = ?) AS ps         INNER JOIN  |
 |                       |       | competition AS c         ON    |
 |                       |       | c.id = ps.competition_id       |
-| 0.0005286408180954816 |  1477 | SELECT * FROM competition      |
-|                       |       | WHERE id = ?                   |
-| 0.0012994127243942356 |  1288 | SELECT * FROM competition      |
+| 0.0007332648461705773 |  3868 | SELECT * FROM competition      |
 |                       |       | WHERE tenant_id=?              |
-| 0.0014245283515551526 |   947 | SELECT * FROM competition      |
+|  0.000409701031344833 |  1349 | SELECT * FROM competition      |
+|                       |       | WHERE id = ?                   |
+|  0.001585871391716739 |   726 | SELECT * FROM player WHERE id  |
+|                       |       | = ?                            |
+|  0.001216438171025869 |   592 | SELECT * FROM competition      |
 |                       |       | WHERE tenant_id=? ORDER BY     |
 |                       |       | created_at DESC                |
-|   0.00120006312591233 |   859 | SELECT ps.rank, ps.player_id,  |
+| 0.0012951158835527567 |   483 | SELECT ps.rank, ps.player_id,  |
 |                       |       | ps.score, player.display_name  |
 |                       |       |         FROM (SELECT rank,     |
 |                       |       | player_id, score               |
@@ -26,23 +28,21 @@
 |                       |       | BY rank LIMIT 100) AS ps       |
 |                       |       |   INNER JOIN player         ON |
 |                       |       | ps.player_id = player.id       |
-|  0.001426074764516094 |   404 | SELECT * FROM player WHERE id  |
-|                       |       | = ?                            |
-|  0.009242630004882813 |   135 | INSERT INTO competition (id,   |
+|  0.002645413080851237 |    75 | SELECT * FROM player           |
+|                       |       | WHERE tenant_id=? ORDER BY     |
+|                       |       | created_at DESC                |
+|  0.009120219548543295 |    75 | INSERT INTO competition (id,   |
 |                       |       | tenant_id, title, finished_at, |
 |                       |       | created_at, updated_at) VALUES |
 |                       |       | (?, ?, ?, ?, ?, ?)             |
-|  0.002108804939329162 |   129 | SELECT * FROM player           |
-|                       |       | WHERE tenant_id=? ORDER BY     |
-|                       |       | created_at DESC                |
-| 0.0076067154524756255 |   122 | UPDATE competition SET         |
+|  0.007549974280343929 |    71 | UPDATE competition SET         |
 |                       |       | finished_at = ?, updated_at =  |
 |                       |       | ? WHERE id = ?                 |
-| 0.0005987706731577388 |   122 |          SELECT player_id      |
+| 0.0005930376724458076 |    71 |          SELECT player_id      |
 |                       |       | FROM player_score              |
 |                       |       |  WHERE tenant_id = ? AND       |
 |                       |       | competition_id = ?             |
-|  0.007734894752502441 |     8 | UPDATE player SET              |
+|  0.006256123383839925 |    12 | UPDATE player SET              |
 |                       |       | is_disqualified = ?,           |
 |                       |       | updated_at = ? WHERE id = ?    |
 +-----------------------+-------+--------------------------------+
