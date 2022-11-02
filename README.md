@@ -48,6 +48,7 @@ ISUCON 12 予選の復習をしています。使用言語はPythonです。
 - サーバー2台構成に変更 (Score: 28427, [2e87ab3](https://github.com/maroyakachar/isucon12-q-revenge/commit/2e87ab3eb323959d8b099a40cc35590b625bb2be))
   + 解説と同じように名前の長さでテナントを2つのサーバーに分けました
   + 1台目: App + Nginx + Redis、2台目: App + MySQL + Redis
+- バックグラウンドで処理を行なうためにWSGIサーバーのuWSGIからASGIサーバーのUvicornに乗り換え (Score: 28128, [b751a02](https://github.com/maroyakachar/isucon12-q-revenge/commit/b751a026abc6cb2a990645e354445b1b45b1323a))
 
 ## 張ったインデックスが`/initialize`によって消されないか
 `/initialize`のハンドラの中身を見ると、`webapp/sql/init.sh`が実行されていることが分かります。
