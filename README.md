@@ -1,8 +1,6 @@
 # isucon12-q-revenge
 ISUCON 12 予選の復習をしています。使用言語はPythonです。
 
-`main`ブランチは1台構成、`multiserver-arch`ブランチは2台構成になっています。
-
 ## 環境
 - 競技者用サーバー: c6i.large
 - ベンチマーカー用サーバー: c6i.xlarge
