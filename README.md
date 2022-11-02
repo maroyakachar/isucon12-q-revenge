@@ -44,6 +44,10 @@ ISUCON 12 予選の復習をしています。使用言語はPythonです。
 - `/api/organizer/players`のSQL文を高速化するためにインデックスを作成 (Score: 12414, [ca3f2aa](https://github.com/maroyakachar/isucon12-q-revenge/commit/ca3f2aaa86f82168c76916d0d5afbede06a64c60))
 - listen queueを大きくする (Score: 20398, [addafb0](https://github.com/maroyakachar/isucon12-q-revenge/commit/addafb0dad30260fdd45838603b1b40bf6780d9f))
   + エラーがなくなり安定するようになった
+- このあたりで[ISUCON12 予選の解説 (Node.jsでSQLiteのまま10万点行く方法)](https://isucon.net/archives/56842718.html)を読みました
+- サーバー2台構成に変更 (Score: 28427, [2e87ab3](https://github.com/maroyakachar/isucon12-q-revenge/commit/2e87ab3eb323959d8b099a40cc35590b625bb2be))
+  + 解説と同じように名前の長さでテナントを2つのサーバーに分けました
+  + 1台目: App + Nginx + Redis、2台目: App + MySQL + Redis
 
 ## 張ったインデックスが`/initialize`によって消されないか
 `/initialize`のハンドラの中身を見ると、`webapp/sql/init.sh`が実行されていることが分かります。
