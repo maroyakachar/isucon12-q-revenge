@@ -24,3 +24,7 @@ mysql -u"$ISUCON_DB_USER" \
 # SQLiteのデータベースを初期化
 rm -f ../tenant_db/*.db
 cp -r ../../initial_data/*.db ../tenant_db/
+
+# Initialize DB in c2
+# TODO: Make more secure (?)
+ssh c2 -i /home/isucon/.ssh/id_rsa webapp/sql/init.sh
