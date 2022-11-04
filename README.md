@@ -1,5 +1,6 @@
 # isucon12-q-revenge
-ISUCON 12 予選の復習をしています。使用言語はPythonです。
+本番ではまったく歯が立たなかったので、あらためてISUCON 12 予選の復習をしました。
+使用言語はPythonです。
 
 ## 環境
 - 競技者用サーバー: c6i.large
@@ -26,10 +27,10 @@ ISUCON 12 予選の復習をしています。使用言語はPythonです。
 - `LIMIT`句を使ってランキング全体のうち要求されている部分だけをデータベースから取得する (Score: 6728, [31848c3](https://github.com/maroyakachar/isucon12-q-revenge/commit/31848c3f62eed3b078d49e0017a97dac756dbb43))
 - `SELECT player_id, MIN(created_at) AS min_created_at FROM visit_history WHERE tenant_id = %s AND competition_id = %s GROUP BY player_id`を高速化する (Score: 7325, [522ee94](https://github.com/maroyakachar/isucon12-q-revenge/commit/522ee94f724beec5ec2d37309d2b0ec8331e4e1d))
   + `player_score`と同様に`visit_history`でも1プレイヤー1履歴にして、`GROUP BY`や`MIN`をなくしました
-- uwsgiを使って複数のワーカーを走らせる (Score: 9734, [329b227](https://github.com/maroyakachar/isucon12-q-revenge/commit/329b22774c8ec8bc4e9d924529cf8b7e3bfbf450))
+- uWSGIを使って複数のワーカーを走らせる (Score: 9734, [329b227](https://github.com/maroyakachar/isucon12-q-revenge/commit/329b22774c8ec8bc4e9d924529cf8b7e3bfbf450))
 - このあたりで解説をちゃんと読みました
 - 最後のflockをトランザクションで置き換える (Score: 10286, [a58a971](https://github.com/maroyakachar/isucon12-q-revenge/commit/a58a971587effed3526e23818dbf035e4ab334f4))
-- 大会終了前の課金レポートを適当に返す (Score: ?, [753d4e7](https://github.com/maroyakachar/isucon12-q-revenge/commit/753d4e7f318314606e424d660b91c2e516197cf2))
+- 終了していない大会の課金レポートを適当に返す (Score: ?, [753d4e7](https://github.com/maroyakachar/isucon12-q-revenge/commit/753d4e7f318314606e424d660b91c2e516197cf2))
 - プレイヤー情報をキャッシュする (Score: 10294, [afc7fbf](https://github.com/maroyakachar/isucon12-q-revenge/commit/afc7fbfea7a9c9d825d51234aaddbdfec370833d))
 - プレイヤーの追加にbulk insertを用いる (Score: 13387, [ad5b177](https://github.com/maroyakachar/isucon12-q-revenge/commit/ad5b1775191d7b13d7c00a759dd2ac265e6017e2))
 - ランキングをキャッシュする (Score: 13788, [8df1e3a](https://github.com/maroyakachar/isucon12-q-revenge/commit/8df1e3ac67ae932f6efe390b51009a9b158625c3))
@@ -44,24 +45,26 @@ ISUCON 12 予選の復習をしています。使用言語はPythonです。
 - `/api/organizer/players`のSQL文を高速化するためにインデックスを作成 (Score: 12414, [ca3f2aa](https://github.com/maroyakachar/isucon12-q-revenge/commit/ca3f2aaa86f82168c76916d0d5afbede06a64c60))
 - listen queueを大きくする (Score: 20398, [addafb0](https://github.com/maroyakachar/isucon12-q-revenge/commit/addafb0dad30260fdd45838603b1b40bf6780d9f))
   + エラーがなくなり安定するようになった
-- このあたりで[ISUCON12 予選の解説 (Node.jsでSQLiteのまま10万点行く方法)](https://isucon.net/archives/56842718.html)を読みました
+- ここで[ISUCON12 予選の解説 (Node.jsでSQLiteのまま10万点行く方法)](https://isucon.net/archives/56842718.html)を読みました
 - サーバー2台構成に変更 (Score: 28427, [2e87ab3](https://github.com/maroyakachar/isucon12-q-revenge/commit/2e87ab3eb323959d8b099a40cc35590b625bb2be))
   + 解説と同じように名前の長さでテナントを2つのサーバーに分けました
   + 1台目: App + Nginx + Redis、2台目: App + MySQL + Redis
 
-## 張ったインデックスが`/initialize`によって消されないか
-`/initialize`のハンドラの中身を見ると、`webapp/sql/init.sh`が実行されていることが分かります。
-このシェルスクリプトはMySQLについては同じディレクトリにある`init.sql`の中のSQL文を実行していますが、その中にテーブルの再作成はありません。
-よって、MySQLについては張ったインデックスは削除されません。
+以下ではやっていて困ったことについて書きます。
 
-一方、SQLiteについてはそれまでのデータベースを削除してしまうので張ったインデックスは削除されてしまいます。
-インデックスを永続化するためにはまず`initial_data/`にある初期のデータベースにインデックスを張ります。
-例として、`1.db`にインデックスを張りたいときはそのためのSQL文を書いたファイルを用意し、`sqlite3 1.db < (ファイルのパス)`とすればよいです。
-次に`/api/admin/tenants/add`が生成するデータベースにもインデックスが張られるようにします。
-データベースの生成には`webapp/sql/tenant/10_schema.sql`が使われるので、このファイルにインデックスの設定を加えます。
+## /initializeがインデックスを消さないか心配になる
+アプリケーションは(1) MySQLのデータベース、(2) `/initialize`を呼び出した直後から存在するSQLiteのデータベース、(3) API（`/api/admin/tenants/add`）が作成するSQLiteのデータベースの3種類のデータベースを利用していますが、そのそれぞれで作成したインデックスが`/initialize`によって消されないかよく分かっていませんでした。
 
-## uwsgiを使う
-最初は`webapp/python/Dockerfile`で`uwsgi --http 0.0.0.0:3000 -M -p 4 main:app`のようなコマンドを実行すればいいと思っていたのですが、それだけだと次のようなエラーが発生します。
+そこで、`/initialize`の実装を読んだところ、次のようになっていることが分かりました。
+
+- MySQLのデータベース: インデックスは削除されない。`/initialize`では初期化処理が書かれた`init.sql`が実行されるが、その中にテーブル、インデックスの削除は含まれていない。
+- `/initialize`を呼び出した直後から存在するSQLiteのデータベース: データベースごと削除される。元となるデータベースが`initial_data/`にあるので、インデックスを永続化したいときは`webapp/tenant_db`のデータベース上ではなく、`initial_data/`のデータベース上でインデックスを作成する。例えば、`1.db`でインデックスを作成したいときはそのためのSQL文を書いたファイルを用意し、`sqlite3 1.db < (ファイルのパス)`を実行する。
+- APIが作成するSQLiteのデータベース: データベースごと削除される。このデータベースの作成には`webapp/sql/tenant/10_schema.sql`が使われているので、インデックスの設定はこのファイルに書けばよい。
+
+## uWSGIが使えない
+アプリケーションをマルチプロセスで動かすためにuWSGIを使うことにしました。
+`webapp/python/Dockerfile`内で`uwsgi --http 0.0.0.0:3000 --master --workers 4 -w main:app`のようなコマンドを実行するようにしたのですが、次のようなエラーが発生してしまいました。
+
 ```
 Traceback (most recent call last):
   File "/home/isucon/.local/lib/python3.9/site-packages/flask/app.py", line 2525, in wsgi_app
@@ -77,10 +80,10 @@ Traceback (most recent call last):
 AttributeError: 'NoneType' object has no attribute 'execute'
 ```
 
-これはMySQLサーバーに接続する関数である`run`が実行されていないことが原因です。
-初期実装だと`run`関数は`__name__`が`__main__`のときに実行されるのですが、上述のコマンドを使っていると`__name__`が`main`になってしまい実行されません。
-これを解決する簡単な方法はMySQLサーバーへの接続をトップレベルに持ってくることです。
-他には[`@uwsgidecorators.postfork`](https://uwsgi-docs.readthedocs.io/en/latest/PythonDecorators.html#uwsgidecorators.postfork)を使い、以下のような関数を定義する方法もあります。
+これはMySQLサーバーに接続する関数`run`が実行されていないことが原因です。
+初期実装では`run`は`__name__`が`__main__`に等しいときに実行されるのですが、上述のコマンドを使っていると`__name__`が`main`になってしまい実行されません。
+これを解決する簡単な方法はMySQLサーバーへの接続をトップレベルで行なうことです。
+他には[`@uwsgidecorators.postfork`](https://uwsgi-docs.readthedocs.io/en/latest/PythonDecorators.html#uwsgidecorators.postfork)を使い、次のような関数を定義する方法もあります。
 
 ```python
 import uwsgidecorators
@@ -91,14 +94,15 @@ def init():
     admin_db = connect_admin_db()
 ```
 
-## SQLiteのログを取る
-予選本番では気づかなかったのですが、SQLiteのログを取るために`webapp/python/sqltrace.py`というファイルが用意されており、
+## SQLiteのログが取れない
+予選本番ではSQLiteのログを取ることができませんでした。
+その後、復習でようやく気付いたのですが、`webapp/python/sqltrace.py`というファイルが用意されていて、
 `webapp/docker-compose-python.yml`の中で`ISUCON_SQLITE_TRACE_FILE`という名前の環境変数にログの出力先のパスを指定するだけで
-ログを取れました。
+SQLiteのログが取れたようです。
 
-## listen queueを大きくする
+## uWSGIが　... full !!! ... というメッセージを出す
 改善を進めていくと、ベンチマーカーによる同時接続を捌ききれなくなり、次のようなメッセージがログに現れるようになりました。
 ```
 *** uWSGI listen queue of socket "127.0.0.1:12345" (fd: 3) full !!! (101/100) ***
 ```
-listen queueを大きくすれば解決するので、uwsgiの設定ファイルに`listen = 1000`を加えて対処しました。
+文面通り、listen queueが溢れてしまっているので、uwsgiの設定ファイルに`listen = 1000`を加え、listen queueのサイズを大きくすることで対処しました。
